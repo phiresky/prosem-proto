@@ -21,6 +21,7 @@
     "jquery": "~2.1.4",
     "lz-string": "~1.4.4",
     "react": "~0.14.1",
-    "react-dom": "~0.1.0"
+    "react-dom": "~0.1.0",
+    "babel-polyfill": "~0.0.1"
   }
 }

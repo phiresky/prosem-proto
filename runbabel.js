@@ -8,6 +8,9 @@ var out = babel.transformFileSync("bin/tmp.js", {
 		"transform-es2015-parameters",
 		"transform-es2015-classes",
 		"transform-es2015-destructuring",
+		"transform-es2015-constants",
+		"transform-es2015-block-scoping",
+		"transform-es2015-block-scoped-functions",
 	],
 	"sourceMaps":"inline",
 });
