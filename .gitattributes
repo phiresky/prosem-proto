@@ -1,0 +1,4 @@
+bin/* binary
+lib/* binary
+bin/* linguist-vendored
+lib/* linguist-vendored

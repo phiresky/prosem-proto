@@ -1,0 +1,6 @@
+node_modules/
+bin/tmp.*
+/java
+.vscode/
+bower_components/
+lib/typings/

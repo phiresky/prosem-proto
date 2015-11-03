@@ -1,0 +1,15 @@
+{
+	"compilerOptions": {
+		"target": "ES6",
+		"out": "bin/tmp.js",
+		"watch": false,
+		"sourceMap": true,
+		"noImplicitAny": true,
+		"jsx": "react"
+	},
+	"files": [
+		"./lib/typings/tsd.d.ts",
+		"./src/Noise.ts",
+		"./src/main.tsx"
+	]
+}
