@@ -386,11 +386,6 @@ var __awaiter = this && this.__awaiter || function (thisArg, _arguments, Promise
 };
 var π = Math.PI;
 var DEG = π / 180;
-var randomGauss = function () {
-    var sigma = arguments.length <= 0 || arguments[0] === undefined ? 1 : arguments[0];
-    var median = arguments.length <= 1 || arguments[1] === undefined ? 0 : arguments[1];
-    return (Math.random() + Math.random() + Math.random() + Math.random() + Math.random() + Math.random() - 3) / 3 * sigma + median;
-};
 var config = {
     w: 1024,
     h: 768,
@@ -406,29 +401,71 @@ var config = {
     riverIter: 1000,
     minHouseDist: 10,
     walk: {
-        stepDist: 4, minLookDist: 10, maxLookDist: 150, lookFOV: 70 * DEG, lookIter: 200,
+        stepDist: 4, minLookDist: 10, maxLookDist: 150, lookFOV: 60 * DEG, lookIter: 200,
         bucketCount: 7,
         iterPerFrame: 20,
         rating: {
-            house: 5,
-            road: 5,
-            tree: -1,
-            river: -1,
+            House: 5,
+            Road: 5,
+            Tree: -1,
+            River: -1,
             start: -3
         }
     },
     settle: {
         sample: 100,
-        randomNearPoint: () => ({ x: randomGauss(config.w / 50), y: randomGauss(config.w / 50) }),
-        settleMapResolution: 15,
+        randomNearPoint: () => ({ x: randomGaussian(config.w / 10), y: randomGaussian(config.w / 10) }),
+        settleMapResolution: 10,
         rating: {
-            house: 10,
-            road: 8,
-            river: 5,
-            tree: -1
+            House: 10,
+            Road: 20,
+            River: 5,
+            Tree: -1
         }
     }
 };
+var _nextGaussian = undefined;
+function randomGaussian() {
+    var standardDeviation = arguments.length <= 0 || arguments[0] === undefined ? 1 : arguments[0];
+    var mean = arguments.length <= 1 || arguments[1] === undefined ? 0 : arguments[1];
+
+    if (_nextGaussian !== undefined) {
+        var nextGaussian = _nextGaussian;
+        _nextGaussian = undefined;
+        return nextGaussian * standardDeviation + mean;
+    } else {
+        var v1 = undefined,
+            v2 = undefined,
+            s = undefined,
+            multiplier = undefined;
+        do {
+            v1 = 2 * Math.random() - 1; // between -1 and 1
+            v2 = 2 * Math.random() - 1; // between -1 and 1
+            s = v1 * v1 + v2 * v2;
+        } while (s >= 1 || s == 0);
+        multiplier = Math.sqrt(-2 * Math.log(s) / s);
+        _nextGaussian = v2 * multiplier;
+        return v1 * multiplier * standardDeviation + mean;
+    }
+}
+;
+var qd = {};
+location.search.substr(1).split("&").forEach(item => {
+    var _item$split = item.split("=");
+
+    var _item$split2 = _slicedToArray(_item$split, 2);
+
+    var k = _item$split2[0];
+    var v = _item$split2[1];
+
+    qd[k] = v && decodeURIComponent(v);
+});
+for (var c of Object.keys(qd)) {
+    var list = c.split(".");
+    var attr = list.pop();
+    var targ = list.reduce((a, b, i, arr) => a[b], config);
+    targ[attr] = typeof targ[attr] === "number" ? +qd[c] : qd[c];
+}
 var Pos;
 (function (Pos) {
     function distance2(p1, p2) {
@@ -531,8 +568,7 @@ var CityElement = (function () {
         this.pos = pos;
         this.rot = rot;
         this.id = CityElement.uniqueCounter++;
-        this.walkRating = NaN;
-        this.settleRating = NaN;
+        this.type = this.constructor.name;
     }
     /** indicates the next created element does not need a unique number */
 
@@ -648,8 +684,20 @@ var CircleElement = (function (_CityElement2) {
     return CircleElement;
 })(CityElement);
 
-var House = (function (_PolyElement) {
-    _inherits(House, _PolyElement);
+var Rectangle = (function (_PolyElement) {
+    _inherits(Rectangle, _PolyElement);
+
+    function Rectangle(pos, rot, width, height, strokeWidth, bumpWidth, strokeColor, fillColor) {
+        _classCallCheck(this, Rectangle);
+
+        return _possibleConstructorReturn(this, Object.getPrototypeOf(Rectangle).call(this, pos, rot, [{ x: -width / 2, y: -height / 2 }, { x: width / 2, y: -height / 2 }, { x: width / 2, y: height / 2 }, { x: -width / 2, y: height / 2 }], strokeWidth, bumpWidth, strokeColor, fillColor, true));
+    }
+
+    return Rectangle;
+})(PolyElement);
+
+var House = (function (_Rectangle) {
+    _inherits(House, _Rectangle);
 
     function House(pos) {
         var rot = arguments.length <= 1 || arguments[1] === undefined ? 0 : arguments[1];
@@ -657,15 +705,11 @@ var House = (function (_PolyElement) {
 
         _classCallCheck(this, House);
 
-        var _this3 = _possibleConstructorReturn(this, Object.getPrototypeOf(House).call(this, pos, rot, [{ x: 0, y: 0 }, { x: size, y: 0 }, { x: size, y: size }, { x: 0, y: size }], 1, 10, "#000", "#000", true));
-
-        _this3.walkRating = config.walk.rating.house;
-        _this3.settleRating = config.settle.rating.house;
-        return _this3;
+        return _possibleConstructorReturn(this, Object.getPrototypeOf(House).call(this, pos, rot, size, randomNumber(size, size * 2), 1, 10, "#000", "#888"));
     }
 
     return House;
-})(PolyElement);
+})(Rectangle);
 
 var Tree = (function (_CircleElement) {
     _inherits(Tree, _CircleElement);
@@ -673,11 +717,7 @@ var Tree = (function (_CircleElement) {
     function Tree(pos, radius) {
         _classCallCheck(this, Tree);
 
-        var _this4 = _possibleConstructorReturn(this, Object.getPrototypeOf(Tree).call(this, pos, radius, radius * 2, config.colors.tree[0], config.colors.tree[1]));
-
-        _this4.walkRating = config.walk.rating.tree;
-        _this4.settleRating = config.settle.rating.tree;
-        return _this4;
+        return _possibleConstructorReturn(this, Object.getPrototypeOf(Tree).call(this, pos, radius, radius * 2, config.colors.tree[0], config.colors.tree[1]));
     }
 
     return Tree;
@@ -689,11 +729,7 @@ var River = (function (_CircleElement2) {
     function River(pos, radius) {
         _classCallCheck(this, River);
 
-        var _this5 = _possibleConstructorReturn(this, Object.getPrototypeOf(River).call(this, pos, radius, radius * 2, config.colors.river[0], config.colors.river[1]));
-
-        _this5.walkRating = config.walk.rating.river;
-        _this5.settleRating = config.settle.rating.river;
-        return _this5;
+        return _possibleConstructorReturn(this, Object.getPrototypeOf(River).call(this, pos, radius, radius * 2, config.colors.river[0], config.colors.river[1]));
     }
 
     return River;
@@ -705,12 +741,10 @@ var Road = (function (_PolyElement2) {
     function Road(path, houses) {
         _classCallCheck(this, Road);
 
-        var _this6 = _possibleConstructorReturn(this, Object.getPrototypeOf(Road).call(this, { x: 0, y: 0 }, 0, path, 4, 10, config.colors.road[0], config.colors.road[1]));
+        var _this7 = _possibleConstructorReturn(this, Object.getPrototypeOf(Road).call(this, { x: 0, y: 0 }, 0, path, 3, 14, config.colors.road[0], config.colors.road[1]));
 
-        _this6.houses = houses;
-        _this6.walkRating = config.walk.rating.road;
-        _this6.settleRating = config.settle.rating.road;
-        return _this6;
+        _this7.houses = houses;
+        return _this7;
     }
 
     return Road;
@@ -764,7 +798,7 @@ function makeTerrain() {
     var noise = new Noise.Noise();
     var lacunarity = 2;
     var gain = 1 / lacunarity;
-    var octaves = 5;
+    var octaves = 3;
     return (x, y) => {
         var frequency = 0.002;
         var amplitude = gain;
@@ -831,19 +865,32 @@ var City = (function () {
             if (thing instanceof House) {
                 this.houses.push(thing);
                 this.houseUnion.add(thing);
-            }
-            if (thing instanceof Road) {
+            } else if (thing instanceof Road) {
                 var _thing$houses = _slicedToArray(thing.houses, 2);
 
                 var house = _thing$houses[0];
                 var targ = _thing$houses[1];
 
-                if (targ instanceof House) this.houseUnion.link(house, targ);else if (targ instanceof Road) this.houseUnion.link(house, targ.houses[0]);else throw Error("road cannot end in " + targ);
+                if (targ instanceof House) this.houseUnion.link(house, targ);else if (targ instanceof Road) this.houseUnion.link(house, targ.houses[0]);
                 this.roads.push(thing);
             } else {
                 this.stuff.push(thing);
             }
             this.pixelMap.add(thing);
+        }
+    }, {
+        key: "createPath",
+        value: function createPath(house1, house2) {
+            return __awaiter(this, void 0, Promise, function* () {
+                var path = yield walkPath(this, cityRenderer.getOverlayCtx(), house1, house2);
+                var targPos = path[path.length - 1];
+                var targ = this.pixelMap.get(targPos);
+                path.unshift(house1.pos);
+                if (targ instanceof House) path.push(targ.pos);
+                if (targ instanceof Road) path.push(targ.arr.map(p => ({ p, d: Pos.distance2(p, targPos) })).reduce((min, cur) => cur.d < min.d ? cur : min, { p: null, d: Infinity }).p);
+                this.add(new Road(path, [house1, targ]));
+                cityRenderer.drawCity(this);
+            });
         }
     }, {
         key: "unionizeHouses",
@@ -855,15 +902,10 @@ var City = (function () {
                     var roots = [...houseUnionMap.keys()];
                     var group1 = randomChoice(roots);
                     var group2 = undefined;
-                    do {
-                        group2 = randomChoice(roots);
-                    } while (group2 === group1);
+                    do group2 = randomChoice(roots); while (group2 === group1);
                     var house1 = randomChoice(houseUnionMap.get(group1)),
                         house2 = randomChoice(houseUnionMap.get(group2));
-                    var path = yield walkPath(city, cityRenderer.getOverlayCtx(), house1, house2);
-                    var targ = city.pixelMap.get(path[path.length - 1]);
-                    city.add(new Road(path, [house1, targ]));
-                    cityRenderer.drawCity(city);
+                    yield this.createPath(house1, house2);
                     houseUnionMap = this.houseUnion.toMap();
                 }
             });
@@ -880,7 +922,7 @@ var City = (function () {
                 for (var i = 0; i < config.settle.sample; i++) {
                     var pos = Pos.minus(p, config.settle.randomNearPoint());
                     var ele = this.pixelMap.get(pos);
-                    if (ele) rating += ele.settleRating;
+                    if (ele) rating += config.settle.rating[ele.type];
                 }
             }
             return rating;
@@ -922,9 +964,7 @@ function createArray(len, init) {
         arr[i] = init(i);
     }return arr;
 }
-function randomNumber() {
-    var min = arguments.length <= 0 || arguments[0] === undefined ? 0 : arguments[0];
-    var max = arguments.length <= 1 || arguments[1] === undefined ? 1 : arguments[1];
+function randomNumber(min, max) {
     var round = arguments.length <= 2 || arguments[2] === undefined ? false : arguments[2];
 
     var val = Math.random() * (max - min) + min;
@@ -1074,7 +1114,7 @@ function walkPath(city, ctx, start, targ) {
             if (city.oob(pos)) return 0;
             var res = city.pixelMap.get(pos);
             if (res === start) return x.rating.start;
-            if (res != null) return res.walkRating;
+            if (res != null) return config.walk.rating[res.type];
             return 0;
         };
         var targetReached = pos => rate(pos) === posRating;
@@ -1113,17 +1153,16 @@ function walkPath(city, ctx, start, targ) {
                 var bucket = _ref5[1];
 
                 CityElement.temp(), new CircleElement(lookp, 1, 0, colors[bucket]).render(ctx);
-            }if (!singleStep) CityElement.temp(), new PolyElement(undefined, undefined, [pos, targ.pos], 2, 0).render(ctx);
+            }if (!singleStep) CityElement.temp(), new CircleElement(targ.pos, 8, 8, "green", "green").render(ctx);
             var rot = (getMaxIndex(ratings) - centerBucket) / bucketCount * x.lookFOV * rotationIntensity;
             dα = rot;
             var targdα = normalizeAngle(Pos.angle(pos, targ.pos) - α);
             if (dα === 0) {
-                dα = targdα * 0.4;
+                dα = targdα * 0.3;
             }
             dα += targdα * 0.1;
             α += dα;
             α = normalizeAngle(α);
-            dα *= 0.9;
             CityElement.temp(), new CircleElement(pos, 2, 0).render(ctx);
             if (city.oob(pos) || targetReached(pos)) {
                 console.log("target reached");
@@ -1152,23 +1191,26 @@ var CityRenderer = (function (_React$Component) {
             args[_key] = arguments[_key];
         }
 
-        var _this7 = _possibleConstructorReturn(this, Object.getPrototypeOf(CityRenderer).call(this, ...args));
+        var _this8 = _possibleConstructorReturn(this, Object.getPrototypeOf(CityRenderer).call(this, ...args));
 
-        _this7.buttonFns = [function redrawCity() {
+        _this8.buttonFns = [function redrawCity() {
             this.drawCity(city);
         }, function unionizeHouses() {
             city.unionizeHouses();
         }, function increasePopulation() {
             var iter = housePlacementIterate();
             for (var i = 0; i < config.addHouseCount; i++) {
-                city.add(new House(iter.next().value));
-            }this.drawCity(city);
+                var pos = iter.next().value;
+                var nearHouse = city.houses.find(house => Pos.distance2(house.pos, pos) < Math.pow(config.w / 15, 2));
+                city.add(new House(pos, nearHouse ? nearHouse.rot + randomNumber(0, 3, true) * Math.PI / 2 : randomNumber(0, π)));
+            }
+            this.drawCity(city);
         }, function debugHitmap() {
             ctx.putImageData(city.pixelMap.ctx.getImageData(0, 0, 1024, 768), 0, 0);
         }, function debugSettlemap() {
             scaleImageData(city.settleRateImage(), config.settle.settleMapResolution, this.getCtx());
         }];
-        return _this7;
+        return _this8;
     }
 
     _createClass(CityRenderer, [{
@@ -1189,7 +1231,7 @@ var CityRenderer = (function (_React$Component) {
             if (!this.terrainImageData) {
                 this.terrainImageData = drawImage(config.w, config.h, (x, y) => {
                     var terr = city.terrain(x, y);
-                    return [terr, terr, terr, 255];
+                    return [terr, terr * 16 / 17 | 0, terr * 10 / 11, 255];
                 });
             }
             var ctx = this.getCtx();
