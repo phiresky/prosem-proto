@@ -14,6 +14,7 @@ const config = {
 	riverCount: 1,
 	riverIter: 1000,
 	minHouseDist: 10,
+	houseSize: 10,
 	walk: {
 		stepDist: 4, minLookDist: 10, maxLookDist: 150, lookFOV: 60 * DEG, lookIter: 200,
 		bucketCount: 7, // must be odd
@@ -189,12 +190,12 @@ class CircleElement extends CityElement {
 }
 class Rectangle extends PolyElement {
 	constructor(pos: Pos, rot: number, width: number, height: number, strokeWidth: number, bumpWidth: number, strokeColor: string, fillColor: string) {
-		super(pos, rot, [{ x: -width/2, y: -height/2 }, { x: width/2, y: -height/2 }, { x: width/2, y: height/2 }, { x: -width/2, y: height/2 }], strokeWidth, bumpWidth, strokeColor, fillColor, true);
+		super(pos, rot, [{ x: -width / 2, y: -height / 2 }, { x: width / 2, y: -height / 2 }, { x: width / 2, y: height / 2 }, { x: -width / 2, y: height / 2 }], strokeWidth, bumpWidth, strokeColor, fillColor, true);
 	}
 }
 class House extends Rectangle {
-	constructor(pos: Pos, rot: number = 0, size: number = 10) {
-		super(pos, rot, size, randomNumber(size, size*2), 1, 10, "#000", "#888");
+	constructor(pos: Pos, rot: number = 0, size: number = config.houseSize) {
+		super(pos, rot, size, randomNumber(size, size * 2), 1, 10, "#000", "#888");
 	}
 }
 class Tree extends CircleElement {
@@ -315,8 +316,8 @@ class City {
 		const targPos = path[path.length - 1];
 		const targ = this.pixelMap.get(targPos);
 		path.unshift(house1.pos);
-		if(targ instanceof House) path.push(targ.pos);
-		if(targ instanceof Road) path.push(targ.arr.map(p => ({p, d:Pos.distance2(p, targPos)})).reduce((min, cur) => cur.d < min.d ? cur:min, {p:null, d:Infinity}).p);
+		if (targ instanceof House) path.push(targ.pos);
+		if (targ instanceof Road) path.push(targ.arr.map(p => ({ p, d: Pos.distance2(p, targPos) })).reduce((min, cur) => cur.d < min.d ? cur : min, { p: null, d: Infinity }).p);
 		this.add(new Road(path, [house1, targ]));
 		cityRenderer.drawCity(this);
 	}
@@ -477,6 +478,9 @@ function normalizeAngle(α: number) {
 	if (α < -π) α += 2 * π;
 	return α;
 }
+function readCamelCase(s: string) {
+	return s[0].toUpperCase() + s.slice(1).replace(/[A-Z]/g, str => ` ${str}`);
+}
 
 function drawImage(w: number, h: number, getColor: (x: number, y: number) => [number, number, number, number]) {
 	const img = new ImageData(w, h);
@@ -559,7 +563,7 @@ function walkPath(city: City, ctx: CanvasRenderingContext2D, start: House, targ:
 class CityRenderer extends React.Component<{}, {}> {
 	render() {
 		return (
-			<div>{this.buttonFns.map(fn => <button onClick={fn.bind(this) }>{fn.name}</button>) }
+			<div>{this.buttonFns.map(fn => <button onClick={fn.bind(this) }>{readCamelCase(fn.name) }</button>) }
 			<div className="overlayCanvases">
 				<canvas ref="canvas1" width={config.w} height={config.h} style={{ border: "1px solid black" }}/>
 				<canvas ref="canvas2" width={config.w} height={config.h} style={{ border: "1px solid black" }}/>
@@ -576,14 +580,28 @@ class CityRenderer extends React.Component<{}, {}> {
 			const iter = housePlacementIterate();
 			for (let i = 0; i < config.addHouseCount; i++) {
 				const pos = iter.next().value;
-				const nearHouse = city.houses.find(house => Pos.distance2(house.pos, pos) < (config.w / 15)**2);
-				city.add(new House(pos, nearHouse ? nearHouse.rot +randomNumber(0, 3, true)*Math.PI/2: randomNumber(0, π)));
+				const nearestHouse = city.houses.find(house => Pos.distance2(house.pos, pos) < (config.w / 15) ** 2);
+
+				const nearest = city.houses.map(h => ({ h, d: Pos.distance2(h.pos, pos) })).reduce((min, cur) => cur.d < min.d ? cur : min, { h: null, d: Infinity });
+				let rot = randomNumber(0, 2 * π);
+				if (nearest.d < (config.houseSize * 2) ** 2) {
+					i--; continue;
+				}
+				if (nearest.d < (config.w / 15) ** 2) {
+					rot = nearest.h.rot + randomNumber(0, 3, true) * Math.PI / 2;
+				}
+				city.add(new House(pos, rot));
 			}
 			this.drawCity(city);
 		}, function debugHitmap() {
 			ctx.putImageData(city.pixelMap.ctx.getImageData(0, 0, 1024, 768), 0, 0);
 		}, function debugSettlemap() {
 			scaleImageData(city.settleRateImage(), config.settle.settleMapResolution, this.getCtx());
+		}, function addRandomStreet() {
+			const h1 = randomChoice(city.houses);
+			let h2: House;
+			do h2 = randomChoice(city.houses); while (h2 === h1);
+			city.createPath(h1, h2);
 		}]
 	clear() {
 		const ctx = this.getCtx();
@@ -595,7 +613,7 @@ class CityRenderer extends React.Component<{}, {}> {
 		if (!this.terrainImageData) {
 			this.terrainImageData = drawImage(config.w, config.h, (x, y) => {
 				const terr = city.terrain(x, y);
-				return [terr, (terr*16/17)|0, terr*10/11, 255];
+				return [terr, (terr * 16 / 17) | 0, terr * 10 / 11, 255];
 			});
 		}
 		const ctx = this.getCtx();

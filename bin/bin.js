@@ -400,6 +400,7 @@ var config = {
     riverCount: 1,
     riverIter: 1000,
     minHouseDist: 10,
+    houseSize: 10,
     walk: {
         stepDist: 4, minLookDist: 10, maxLookDist: 150, lookFOV: 60 * DEG, lookIter: 200,
         bucketCount: 7,
@@ -701,7 +702,7 @@ var House = (function (_Rectangle) {
 
     function House(pos) {
         var rot = arguments.length <= 1 || arguments[1] === undefined ? 0 : arguments[1];
-        var size = arguments.length <= 2 || arguments[2] === undefined ? 10 : arguments[2];
+        var size = arguments.length <= 2 || arguments[2] === undefined ? config.houseSize : arguments[2];
 
         _classCallCheck(this, House);
 
@@ -1084,6 +1085,9 @@ function normalizeAngle(α) {
     if (α < -π) α += 2 * π;
     return α;
 }
+function readCamelCase(s) {
+    return s[0].toUpperCase() + s.slice(1).replace(/[A-Z]/g, str => ` ${ str }`);
+}
 function drawImage(w, h, getColor) {
     var img = new ImageData(w, h);
     for (var y = 0; y < h; y++) {
@@ -1201,14 +1205,28 @@ var CityRenderer = (function (_React$Component) {
             var iter = housePlacementIterate();
             for (var i = 0; i < config.addHouseCount; i++) {
                 var pos = iter.next().value;
-                var nearHouse = city.houses.find(house => Pos.distance2(house.pos, pos) < Math.pow(config.w / 15, 2));
-                city.add(new House(pos, nearHouse ? nearHouse.rot + randomNumber(0, 3, true) * Math.PI / 2 : randomNumber(0, π)));
+                var nearestHouse = city.houses.find(house => Pos.distance2(house.pos, pos) < Math.pow(config.w / 15, 2));
+                var nearest = city.houses.map(h => ({ h, d: Pos.distance2(h.pos, pos) })).reduce((min, cur) => cur.d < min.d ? cur : min, { h: null, d: Infinity });
+                var rot = randomNumber(0, 2 * π);
+                if (nearest.d < Math.pow(config.houseSize * 2, 2)) {
+                    i--;
+                    continue;
+                }
+                if (nearest.d < Math.pow(config.w / 15, 2)) {
+                    rot = nearest.h.rot + randomNumber(0, 3, true) * Math.PI / 2;
+                }
+                city.add(new House(pos, rot));
             }
             this.drawCity(city);
         }, function debugHitmap() {
             ctx.putImageData(city.pixelMap.ctx.getImageData(0, 0, 1024, 768), 0, 0);
         }, function debugSettlemap() {
             scaleImageData(city.settleRateImage(), config.settle.settleMapResolution, this.getCtx());
+        }, function addRandomStreet() {
+            var h1 = randomChoice(city.houses);
+            var h2 = undefined;
+            do h2 = randomChoice(city.houses); while (h2 === h1);
+            city.createPath(h1, h2);
         }];
         return _this8;
     }
@@ -1216,7 +1234,7 @@ var CityRenderer = (function (_React$Component) {
     _createClass(CityRenderer, [{
         key: "render",
         value: function render() {
-            return React.createElement("div", null, this.buttonFns.map(fn => React.createElement("button", { "onClick": fn.bind(this) }, fn.name)), React.createElement("div", { "className": "overlayCanvases" }, React.createElement("canvas", { "ref": "canvas1", "width": config.w, "height": config.h, "style": { border: "1px solid black" } }), React.createElement("canvas", { "ref": "canvas2", "width": config.w, "height": config.h, "style": { border: "1px solid black" } })));
+            return React.createElement("div", null, this.buttonFns.map(fn => React.createElement("button", { "onClick": fn.bind(this) }, readCamelCase(fn.name))), React.createElement("div", { "className": "overlayCanvases" }, React.createElement("canvas", { "ref": "canvas1", "width": config.w, "height": config.h, "style": { border: "1px solid black" } }), React.createElement("canvas", { "ref": "canvas2", "width": config.w, "height": config.h, "style": { border: "1px solid black" } })));
         }
     }, {
         key: "clear",
