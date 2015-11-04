@@ -1,7 +1,5 @@
 const π = Math.PI;
 const DEG = π / 180;
-const randomGauss = (sigma = 1, median = 0) =>
-	((Math.random() + Math.random() + Math.random() + Math.random() + Math.random() + Math.random()) - 3) / 3 * sigma + median;
 const config = {
 	w: 1024,
 	h: 768,
@@ -17,28 +15,57 @@ const config = {
 	riverIter: 1000,
 	minHouseDist: 10,
 	walk: {
-		stepDist: 4, minLookDist: 10, maxLookDist: 150, lookFOV: 70 * DEG, lookIter: 200,
+		stepDist: 4, minLookDist: 10, maxLookDist: 150, lookFOV: 60 * DEG, lookIter: 200,
 		bucketCount: 7, // must be odd
 		iterPerFrame: 20,
 		rating: {
-			house: 5,
-			road: 5,
-			tree: -1,
-			river: -1,
+			House: 5,
+			Road: 5,
+			Tree: -1,
+			River: -1,
 			start: -3,
-		}
+		} as any
 	},
 	settle: {
 		sample: 100,
-		randomNearPoint: () => ({ x: randomGauss(config.w / 50), y: randomGauss(config.w / 50) }),
-		settleMapResolution: 15,
+		randomNearPoint: () => ({ x: randomGaussian(config.w / 10), y: randomGaussian(config.w / 10) }),
+		settleMapResolution: 10,
 		rating: {
-			house: 10,
-			road: 8,
-			river: 5,
-			tree: -1,
-		}
+			House: 10,
+			Road: 20,
+			River: 5,
+			Tree: -1,
+		} as any
 	}
+}
+let _nextGaussian: number;
+function randomGaussian(standardDeviation = 1, mean = 0) {
+	if (_nextGaussian !== undefined) {
+		var nextGaussian = _nextGaussian;
+		_nextGaussian = undefined;
+		return (nextGaussian * standardDeviation) + mean;
+	} else {
+		let v1: number, v2: number, s: number, multiplier: number;
+		do {
+			v1 = 2 * Math.random() - 1; // between -1 and 1
+			v2 = 2 * Math.random() - 1; // between -1 and 1
+			s = v1 * v1 + v2 * v2;
+		} while (s >= 1 || s == 0);
+		multiplier = Math.sqrt(-2 * Math.log(s) / s);
+		_nextGaussian = v2 * multiplier;
+		return (v1 * multiplier * standardDeviation) + mean;
+	}
+};
+var qd: { [key: string]: string } = {};
+location.search.substr(1).split("&").forEach(item => {
+    let [k, v] = item.split("=");
+    qd[k] = v && decodeURIComponent(v);
+});
+for (let c of Object.keys(qd)) {
+	const list = c.split(".");
+	const attr = list.pop();
+	const targ = list.reduce((a, b, i, arr) => a[b], config as any);
+	targ[attr] = typeof targ[attr] === "number" ? +qd[c] : qd[c];
 }
 interface Pos {
 	x: number; y: number;
@@ -106,14 +133,13 @@ class UnionFind<T> {
 abstract class CityElement {
 	private static uniqueCounter = 0;
 	id = CityElement.uniqueCounter++;
+	type = this.constructor.name;
 	/** indicates the next created element does not need a unique number */
 	static temp() {
 		CityElement.uniqueCounter--;
 	}
 	constructor(public pos: Pos, public rot: number = 0) { }
 	abstract renderObj(ctx: CanvasRenderingContext2D, forPixelMap: boolean): void;
-	walkRating = NaN;
-	settleRating = NaN;
 	render(ctx: CanvasRenderingContext2D, forPixelMap = false) {
 		ctx.save();
 		ctx.translate(this.pos.x, this.pos.y);
@@ -161,33 +187,30 @@ class CircleElement extends CityElement {
 		ctx.stroke();
 	}
 }
-class House extends PolyElement {
-	constructor(pos: Pos, rot: number = 0, size: number = 10) {
-		super(pos, rot, [{ x: 0, y: 0 }, { x: size, y: 0 }, { x: size, y: size }, { x: 0, y: size }], 1, 10, "#000", "#000", true);
+class Rectangle extends PolyElement {
+	constructor(pos: Pos, rot: number, width: number, height: number, strokeWidth: number, bumpWidth: number, strokeColor: string, fillColor: string) {
+		super(pos, rot, [{ x: -width/2, y: -height/2 }, { x: width/2, y: -height/2 }, { x: width/2, y: height/2 }, { x: -width/2, y: height/2 }], strokeWidth, bumpWidth, strokeColor, fillColor, true);
 	}
-	walkRating = config.walk.rating.house;
-	settleRating = config.settle.rating.house;
+}
+class House extends Rectangle {
+	constructor(pos: Pos, rot: number = 0, size: number = 10) {
+		super(pos, rot, size, randomNumber(size, size*2), 1, 10, "#000", "#888");
+	}
 }
 class Tree extends CircleElement {
 	constructor(pos: Pos, radius: number) {
 		super(pos, radius, radius * 2, config.colors.tree[0], config.colors.tree[1]);
 	}
-	walkRating = config.walk.rating.tree;
-	settleRating = config.settle.rating.tree;
 }
 class River extends CircleElement {
 	constructor(pos: Pos, radius: number) {
 		super(pos, radius, radius * 2, config.colors.river[0], config.colors.river[1]);
 	}
-	walkRating = config.walk.rating.river;
-	settleRating = config.settle.rating.river;
 }
 class Road extends PolyElement {
 	constructor(path: Pos[], public houses: [House, CityElement]) {
-		super({ x: 0, y: 0 }, 0, path, 4, 10, config.colors.road[0], config.colors.road[1]);
+		super({ x: 0, y: 0 }, 0, path, 3, 14, config.colors.road[0], config.colors.road[1]);
 	}
-	walkRating = config.walk.rating.road;
-	settleRating = config.settle.rating.road;
 }
 class PixelMap {
 	can = document.createElement("canvas");
@@ -222,7 +245,7 @@ function makeTerrain() {
 	const noise = new Noise.Noise();
 	const lacunarity = 2;
 	const gain = 1 / lacunarity;
-	const octaves = 5;
+	const octaves = 3;
 
 	return (x: number, y: number) => {
 		let frequency = 0.002;
@@ -249,20 +272,20 @@ function scaleImageData(imageData: ImageData, scale: number, target: CanvasRende
 function weightedRandom(weights: number[], total_weight: number, increment = 1) {
 	var random_num = randomNumber(0, total_weight);
 	var weight_sum = 0;
-	for (var i = 0; i < weights.length; i+=increment) {
+	for (var i = 0; i < weights.length; i += increment) {
 		weight_sum += weights[i];
 		if (random_num <= weight_sum) return i;
 	}
 };
-function contrastSpreiz(arr:number[]) {
+function contrastSpreiz(arr: number[]) {
 	let min = Infinity, max = -Infinity;
-	for(let i = 0; i < arr.length; i++) {
+	for (let i = 0; i < arr.length; i++) {
 		const cur = arr[i];
-		if(cur < min) min = cur;
-		if(cur > max) max = cur;
+		if (cur < min) min = cur;
+		if (cur > max) max = cur;
 	}
-	for(let i = 0; i < arr.length; i++) {
-		arr[i] = (arr[i] - min) / (max-min);
+	for (let i = 0; i < arr.length; i++) {
+		arr[i] = (arr[i] - min) / (max - min);
 	}
 	return arr;
 }
@@ -276,18 +299,26 @@ class City {
 		if (thing instanceof House) {
 			this.houses.push(thing);
 			this.houseUnion.add(thing);
-		}
-		if (thing instanceof Road) {
+		} else if (thing instanceof Road) {
 			const [house, targ] = thing.houses;
 			if (targ instanceof House) this.houseUnion.link(house, targ);
 			else if (targ instanceof Road) this.houseUnion.link(house, targ.houses[0]);
-			else throw Error("road cannot end in " + targ);
 			this.roads.push(thing);
 		}
 		else {
 			this.stuff.push(thing);
 		}
 		this.pixelMap.add(thing);
+	}
+	async createPath(house1: House, house2: House) {
+		const path = await walkPath(this, cityRenderer.getOverlayCtx(), house1, house2);
+		const targPos = path[path.length - 1];
+		const targ = this.pixelMap.get(targPos);
+		path.unshift(house1.pos);
+		if(targ instanceof House) path.push(targ.pos);
+		if(targ instanceof Road) path.push(targ.arr.map(p => ({p, d:Pos.distance2(p, targPos)})).reduce((min, cur) => cur.d < min.d ? cur:min, {p:null, d:Infinity}).p);
+		this.add(new Road(path, [house1, targ]));
+		cityRenderer.drawCity(this);
 	}
 	async unionizeHouses() {
 		let houseUnionMap = this.houseUnion.toMap();
@@ -296,12 +327,9 @@ class City {
 			const roots = [...houseUnionMap.keys()];
 			const group1 = randomChoice(roots);
 			let group2: House;
-			do { group2 = randomChoice(roots) } while (group2 === group1);
+			do group2 = randomChoice(roots); while (group2 === group1);
 			let house1 = randomChoice(houseUnionMap.get(group1)), house2 = randomChoice(houseUnionMap.get(group2));
-			const path = await walkPath(city, cityRenderer.getOverlayCtx(), house1, house2);
-			const targ = city.pixelMap.get(path[path.length - 1]);
-			city.add(new Road(path, [house1, targ]));
-			cityRenderer.drawCity(city);
+			await this.createPath(house1, house2);
 			houseUnionMap = this.houseUnion.toMap();
 		}
 	}
@@ -314,7 +342,7 @@ class City {
 			for (let i = 0; i < config.settle.sample; i++) {
 				const pos = Pos.minus(p, config.settle.randomNearPoint());
 				const ele = this.pixelMap.get(pos);
-				if (ele) rating += ele.settleRating;
+				if (ele) rating += config.settle.rating[ele.type];
 			}
 		}
 		return rating;
@@ -322,16 +350,16 @@ class City {
 	settleRateMap() {
 		const w = (config.w / config.settle.settleMapResolution) | 0;
 		const h = (config.h / config.settle.settleMapResolution) | 0;
-		const vals:number[] = [];
-		for(let y = 0; y < h; y++) for(let x = 0; x < w; x++) {
+		const vals: number[] = [];
+		for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
 			vals.push((this.rateForSettling({ x: (x + 0.5) * config.settle.settleMapResolution, y: (y + 0.5) * config.settle.settleMapResolution })) * 255) | 0;
 		}
-		return {w, h, vals: contrastSpreiz(vals)};
+		return { w, h, vals: contrastSpreiz(vals) };
 	}
 	settleRateImage() {
 		const {w, h, vals} = this.settleRateMap();
 		return drawImage(w, h, (x, y) => {
-			const r = (vals[y*w+x]**3 * 255) |0;
+			const r = (vals[y * w + x] ** 3 * 255) | 0;
 			return [r, r, r, 255];
 		});
 	}
@@ -343,7 +371,7 @@ function createArray<T>(len: number, init: (index: number) => T) {
 	for (let i = 0; i < len; i++) arr[i] = init(i);
 	return arr;
 }
-function randomNumber(min = 0, max = 1, round = false) {
+function randomNumber(min: number, max: number, round = false) {
 	const val = Math.random() * (max - min) + min;
 	return round ? val | 0 : val;
 }
@@ -364,21 +392,21 @@ function getMaxIndex(vals: number[]) {
 	return maxi;
 }
 
-function *housePlacementIterate() {
-	let {w, h, vals:settleMap} = city.settleRateMap();
+function* housePlacementIterate() {
+	let {w, h, vals: settleMap} = city.settleRateMap();
 	settleMap = settleMap.map(x => {
-		const x3 = x*x*x;
-		if(x3 < 0.1) return 0;
+		const x3 = x * x * x;
+		if (x3 < 0.1) return 0;
 		else return x3;
 	});
-	const max = settleMap.reduce((a,b)=>a+b);
-	while(true) {
+	const max = settleMap.reduce((a, b) => a + b);
+	while (true) {
 		const inx = weightedRandom(settleMap, max);
-		const y = (inx/w)|0, x = (inx%w)|0;
-		const pos = {x: config.settle.settleMapResolution * (x+0.5), y: config.settle.settleMapResolution * (y+0.5)};
+		const y = (inx / w) | 0, x = (inx % w) | 0;
+		const pos = { x: config.settle.settleMapResolution * (x + 0.5), y: config.settle.settleMapResolution * (y + 0.5) };
 		yield pos;
 	}
-	
+
 }
 
 function placeHouseNearRiver(city: City, river: (p: Pos) => number, pos: Pos) {
@@ -472,7 +500,7 @@ function walkPath(city: City, ctx: CanvasRenderingContext2D, start: House, targ:
 			if (city.oob(pos)) return 0;
 			const res = city.pixelMap.get(pos);
 			if (res === start) return x.rating.start;
-			if (res != null) return res.walkRating;
+			if (res != null) return config.walk.rating[res.type];
 			return 0;
 		};
 		const targetReached = (pos: Pos) => rate(pos) === posRating;
@@ -503,17 +531,16 @@ function walkPath(city: City, ctx: CanvasRenderingContext2D, start: House, targ:
 			}
 
 			if (!singleStep) for (var [lookp, bucket] of lookps) CityElement.temp(), new CircleElement(lookp, 1, 0, colors[bucket]).render(ctx);
-			if (!singleStep) CityElement.temp(), new PolyElement(undefined, undefined, [pos, targ.pos], 2, 0).render(ctx);
+			if (!singleStep) CityElement.temp(), new CircleElement(targ.pos, 8, 8, "green", "green").render(ctx);
 			var rot = (getMaxIndex(ratings) - centerBucket) / bucketCount * x.lookFOV * rotationIntensity;
 			dα = rot;
 			let targdα = normalizeAngle(Pos.angle(pos, targ.pos) - α);
 			if (dα === 0) { // direction is okay regarding obstacles
-				dα = targdα * 0.4;
+				dα = targdα * 0.3;
 			}
 			dα += targdα * 0.1;
 			α += dα;
 			α = normalizeAngle(α);
-			dα *= 0.9;
 			CityElement.temp(), new CircleElement(pos, 2, 0).render(ctx);
 			if (city.oob(pos) || targetReached(pos)) {
 				console.log("target reached");
@@ -522,7 +549,7 @@ function walkPath(city: City, ctx: CanvasRenderingContext2D, start: House, targ:
 			}
 			else {
 				if (singleStep) return false;
-				for(let i = 0; i < x.iterPerFrame; i++) if(step(undefined, true)) return true;
+				for (let i = 0; i < x.iterPerFrame; i++) if (step(undefined, true)) return true;
 				requestAnimationFrame(step);
 			}
 		}
@@ -547,7 +574,11 @@ class CityRenderer extends React.Component<{}, {}> {
 			city.unionizeHouses();
 		}, function increasePopulation() {
 			const iter = housePlacementIterate();
-			for(let i = 0; i < config.addHouseCount; i++) city.add(new House(iter.next().value));
+			for (let i = 0; i < config.addHouseCount; i++) {
+				const pos = iter.next().value;
+				const nearHouse = city.houses.find(house => Pos.distance2(house.pos, pos) < (config.w / 15)**2);
+				city.add(new House(pos, nearHouse ? nearHouse.rot +randomNumber(0, 3, true)*Math.PI/2: randomNumber(0, π)));
+			}
 			this.drawCity(city);
 		}, function debugHitmap() {
 			ctx.putImageData(city.pixelMap.ctx.getImageData(0, 0, 1024, 768), 0, 0);
@@ -564,7 +595,7 @@ class CityRenderer extends React.Component<{}, {}> {
 		if (!this.terrainImageData) {
 			this.terrainImageData = drawImage(config.w, config.h, (x, y) => {
 				const terr = city.terrain(x, y);
-				return [terr, terr, terr, 255];
+				return [terr, (terr*16/17)|0, terr*10/11, 255];
 			});
 		}
 		const ctx = this.getCtx();
