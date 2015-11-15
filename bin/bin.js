@@ -404,7 +404,7 @@ var config = {
     walk: {
         stepDist: 4, minLookDist: 10, maxLookDist: 150, lookFOV: 60 * DEG, lookIter: 200,
         bucketCount: 7,
-        iterPerFrame: 20,
+        iterPerFrame: 2,
         rating: {
             House: 5,
             Road: 5,
